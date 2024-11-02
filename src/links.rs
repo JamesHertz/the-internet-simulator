@@ -37,6 +37,12 @@ impl LinkEnd {
     }
 }
 
+impl Drop for LinkEnd {
+    fn drop(&mut self) {
+        // TODO: Remove its handler function from Link c:
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[repr(u8)]
 pub enum LinkEndId {
