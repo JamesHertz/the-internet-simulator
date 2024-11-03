@@ -10,6 +10,7 @@ use super::{ParseError, Parser};
 
 pub const ETHERNET_CRC_SIZE: usize = 4;
 pub const ETHERNET_MAC_ADDR_SIZE: usize = 6;
+pub const ETHERNET_BROADCAST_MAC_ADDR: MacAddress = MacAddress::new([255; ETHERNET_MAC_ADDR_SIZE]);
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
 pub struct MacAddress([u8; ETHERNET_MAC_ADDR_SIZE]);
@@ -33,7 +34,7 @@ impl MacAddress {
         }
     }
 
-    pub fn new(bytes: [u8; ETHERNET_MAC_ADDR_SIZE]) -> Self {
+    pub const fn new(bytes: [u8; ETHERNET_MAC_ADDR_SIZE]) -> Self {
         Self(bytes)
     }
 

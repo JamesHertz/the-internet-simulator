@@ -4,6 +4,11 @@ use crate::{
     protocols::ethernet::MacAddress,
 };
 
+use std::{
+    collections::VecDeque,
+    sync::{Arc, Condvar, Mutex},
+};
+
 pub struct Interface {
     interface_id: u32,
     connection: Option<LinkEnd>,
@@ -12,12 +17,23 @@ pub struct Interface {
 pub struct Module {
     interfaces: Vec<Interface>,
     interface_nr: u32,
-    // TODO: add more things here c:
+    msg_buffer: Arc<(Mutex<VecDeque<WireMsg>>, Condvar)>, // TODO: add more things here c:
 }
 
 pub struct WireMsg {
     pub data: LinkData,
     pub interface_id: u32,
+}
+
+pub trait Device {
+    fn get_mac_address(&self) -> MacAddress;
+    fn get_module(&mut self) -> &mut Module;
+    fn run(&mut self);
+
+    // default methods
+    //fn attach_link(&mut self, interface_id: u32, link_end: LinkEnd) {
+    //    self.get_module().attach_link(interface_id, link_end)
+    //}
 }
 
 impl Interface {
@@ -52,6 +68,7 @@ impl Module {
                     connection: None,
                 })
                 .collect(),
+            msg_buffer: Arc::new((Mutex::new(VecDeque::new()), Condvar::new())),
         }
     }
 
@@ -73,8 +90,16 @@ impl Module {
 
         let interface = &mut self.interfaces[interface_id as usize];
         match interface.connection {
-            // TODO: attach a handler function to link_end
-            None => interface.connection = Some(link_end),
+            None => {
+                let msg_buffer = Arc::clone(&self.msg_buffer);
+                link_end.attach_receiver(move |data| {
+                    let (lock, condvar) = &*msg_buffer;
+                    let mut buffer = lock.lock().unwrap();
+                    buffer.push_back(WireMsg { interface_id, data });
+                    condvar.notify_one() // there should only be one thread waiting for this
+                });
+                interface.connection = Some(link_end);
+            }
             Some(_) => {
                 // TODO: think if you want to panic or send a result error
                 panic!("Attaching link to interface {interface_id} which already has a connection")
@@ -86,18 +111,43 @@ impl Module {
         self.interfaces.iter()
     }
 
-    pub fn wait_for_msg(&mut self) -> Result<WireMsg, LinkError> {
-        todo!()
+    pub fn wait_for_msg(&mut self) -> WireMsg {
+        let (lock, condvar) = &*self.msg_buffer;
+
+        let mut buffer = condvar
+            .wait_while(lock.lock().unwrap(), |buffer| buffer.is_empty())
+            .unwrap();
+
+        buffer.pop_front().unwrap()
     }
 }
 
-pub trait Device {
-    fn get_mac_address(&self) -> MacAddress;
-    fn get_module(&mut self) -> &mut Module;
-    fn run(&mut self);
+pub struct ProgrammableDevice<F> {
+    program: F,
+    module: Module,
+    address: MacAddress,
+}
 
-    // default methods
-    //fn attach_link(&mut self, interface_id: u32, link_end: LinkEnd) {
-    //    self.get_module().attach_link(interface_id, link_end)
-    //}
+impl<F: FnMut(MacAddress, &mut Module)> ProgrammableDevice<F> {
+    pub fn new(address: MacAddress, interface_nr: u32, program: F) -> Self {
+        Self {
+            program,
+            address,
+            module: Module::new(interface_nr),
+        }
+    }
+}
+
+impl<F: FnMut(MacAddress, &mut Module) + Send> Device for ProgrammableDevice<F> {
+    fn get_mac_address(&self) -> MacAddress {
+        self.address
+    }
+
+    fn get_module(&mut self) -> &mut Module {
+        &mut self.module
+    }
+
+    fn run(&mut self) {
+        (self.program)(self.address, &mut self.module);
+    }
 }
