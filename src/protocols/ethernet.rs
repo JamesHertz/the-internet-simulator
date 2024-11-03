@@ -65,12 +65,6 @@ impl Display for MacAddress {
     }
 }
 
-//impl From<MacAddress> for &[u8; ETHERNET_MAC_ADDR_SIZE] {
-//    fn from(address: MacAddress) -> Self {
-//        address.0
-//    }
-//}
-
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct EthernetFrame {
     pub source: MacAddress,

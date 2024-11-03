@@ -1,3 +1,4 @@
+pub mod switch;
 use crate::{
     links::{LinkData, LinkEnd, LinkError},
     protocols::ethernet::MacAddress,
@@ -12,6 +13,31 @@ pub struct Module {
     interfaces: Vec<Interface>,
     interface_nr: u32,
     // TODO: add more things here c:
+}
+
+pub struct WireMsg {
+    pub data: LinkData,
+    pub interface_id: u32,
+}
+
+impl Interface {
+    fn is_up(&self) -> bool {
+        // FIXME: start to consider the fact the other end might not have a handler
+        self.connection.is_some()
+    }
+
+    fn send(&self, data: &[u8]) {
+        // TODO:
+        //  - start returing a Result<..>
+        //  - start sending Arc<..> to avoid copying c:
+        assert!(
+            self.is_up(),
+            "Sending data through interface {} that is down!",
+            self.interface_id
+        );
+        let connection = self.connection.as_ref().unwrap();
+        connection.send(data).unwrap();
+    }
 }
 
 impl Module {
@@ -33,6 +59,11 @@ impl Module {
         self.interface_nr
     }
 
+    pub fn get_interface(&self, interface_id: u32) -> &Interface {
+        assert!(self.interface_nr > interface_id);
+        &self.interfaces[interface_id as usize]
+    }
+
     pub fn attach_link(&mut self, interface_id: u32, link_end: LinkEnd) {
         assert!(
             interface_id < self.interface_nr,
@@ -51,7 +82,11 @@ impl Module {
         }
     }
 
-    fn wait_for_msg(&mut self) -> Result<LinkData, LinkError> {
+    pub fn interfaces(&self) -> impl Iterator<Item = &Interface> {
+        self.interfaces.iter()
+    }
+
+    pub fn wait_for_msg(&mut self) -> Result<WireMsg, LinkError> {
         todo!()
     }
 }
