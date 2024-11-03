@@ -1,4 +1,4 @@
-#![feature(iter_map_windows)]
+#![feature(iter_map_windows, iter_next_chunk)]
 #![allow(unused)]
 
 use simulator::Simulator;

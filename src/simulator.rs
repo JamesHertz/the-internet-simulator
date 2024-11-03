@@ -1,6 +1,7 @@
 use crate::{
-    devices::{Device, MacAddress, Module},
+    devices::{Device, Module},
     links::{self, Link, LinkEnd},
+    protocols::ethernet::MacAddress,
 };
 use std::{collections::HashMap, thread};
 
