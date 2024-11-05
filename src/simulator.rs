@@ -34,7 +34,7 @@ impl Simulator {
 
     pub fn add_device<T>(&mut self, device: T)
     where
-        T: Device + Send + 'static,
+        T: Device + 'static,
     {
         let mac = device.get_mac_address();
         assert!(
@@ -48,6 +48,7 @@ impl Simulator {
         self.links.push((source, destin))
     }
 
+    // TODO: an Result<...>
     fn create_network(&mut self) {
         for (src, dst) in self.links.iter() {
             let (end_1, end_2) = links::create_link();
@@ -63,7 +64,7 @@ impl Simulator {
                 .get_mut(&dst.mac_address)
                 .expect("Failed to find device 2");
 
-            device_2.get_module().attach_link(src.interface_id, end_2);
+            device_2.get_module().attach_link(dst.interface_id, end_2);
         }
     }
 

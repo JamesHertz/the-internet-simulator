@@ -61,7 +61,7 @@ impl LinkEndId {
 }
 
 type LinkEndHandler = Box<dyn FnMut(LinkData) + Send + Sync>;
-pub trait Link {
+pub trait Link: Send {
     fn send(&mut self, from: LinkEndId, data: &[u8]) -> Result<(), LinkError>;
     fn attach_receiver(
         &mut self,

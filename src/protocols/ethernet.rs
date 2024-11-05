@@ -1,7 +1,7 @@
 use crate::links::{LinkData, LinkEnd, LinkError};
 use std::{
     convert::{From, Infallible, TryFrom},
-    fmt::Display,
+    fmt::{Debug, Display},
     io::Write,
     num::ParseIntError,
 };
@@ -66,7 +66,7 @@ impl Display for MacAddress {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct EthernetFrame {
     pub source: MacAddress,
     pub destin: MacAddress,
@@ -74,8 +74,19 @@ pub struct EthernetFrame {
     pub data: Box<[u8]>,
 }
 
+impl Debug for EthernetFrame {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EthernetFrame")
+            .field("source", &format_args!("{}", self.source))
+            .field("destin", &format_args!("{}", self.destin))
+            .field("protocol", &self.protocol)
+            .field("data", &"...") // TODO: do something about this
+            .finish()
+    }
+}
+
 impl EthernetFrame {
-    fn to_bytes(&self) -> Box<[u8]> {
+    pub fn to_bytes(&self) -> Box<[u8]> {
         let mut buffer: Vec<u8> = Vec::new();
         super::write_bytes(&mut buffer, self.source.as_bytes());
         super::write_bytes(&mut buffer, self.destin.as_bytes());
@@ -83,6 +94,38 @@ impl EthernetFrame {
         super::write_bytes(&mut buffer, self.data.as_ref());
         super::write_bytes(&mut buffer, &[0; ETHERNET_CRC_SIZE]);
         buffer.into()
+    }
+
+    // I purposedfully ignored the first 8 bytes (the preamble). 7 of which are patterns in the
+    // form 010101... to make the NIC aware that something is going to be sent over the wire
+    // (and not some random noise) and another one  which signals the start of the transmission
+    // (https://en.wikipedia.org/wiki/Ethernet_frame#Preamble_and_start_frame_delimiter).
+    pub fn from_raw_bytes(data: &[u8]) -> Result<Self, ParseError> {
+        let mut parser = Parser::build(data);
+
+        let source = MacAddress::new(parser.parse_chunk()?);
+        let destin = MacAddress::new(parser.parse_chunk()?);
+
+        let protocol = parser.parse_u16()?;
+
+        let mut data_and_crc = parser.collect();
+        if data_and_crc.len() < ETHERNET_CRC_SIZE {
+            Err(ParseError::MissingBytes)
+        } else {
+            // TODO: check the the CRC bytes are all set to 0
+            data_and_crc.resize(data_and_crc.len() - ETHERNET_CRC_SIZE, 0);
+            Ok(Self {
+                source,
+                destin,
+                protocol: protocol
+                    .try_into()
+                    .map_err(|_| ParseError::InvalidFieldValue {
+                        field: "ethernet_protocol",
+                        value: protocol as usize,
+                    })?,
+                data: data_and_crc.into(),
+            })
+        }
     }
 }
 
@@ -108,45 +151,13 @@ impl TryFrom<u16> for FrameProtocol {
 impl TryFrom<&[u8]> for EthernetFrame {
     type Error = ParseError;
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        parse_ethernet_frame(value)
+        EthernetFrame::from_raw_bytes(value)
     }
 }
 
 impl From<EthernetFrame> for Box<[u8]> {
     fn from(frame: EthernetFrame) -> Self {
         frame.to_bytes()
-    }
-}
-
-// I purposedfully ignored the first 8 bytes (the preamble). 7 of which are patterns in the
-// form 010101... to make the NIC aware that something is going to be sent over the wire
-// (and not some random noise) and another one  which signals the start of the transmission
-// (https://en.wikipedia.org/wiki/Ethernet_frame#Preamble_and_start_frame_delimiter).
-pub fn parse_ethernet_frame(data: &[u8]) -> Result<EthernetFrame, ParseError> {
-    let mut parser = Parser::build(data);
-
-    let source = MacAddress::new(parser.parse_chunk()?);
-    let destin = MacAddress::new(parser.parse_chunk()?);
-
-    let protocol = parser.parse_u16()?;
-
-    let mut data_and_crc = parser.collect();
-    if data_and_crc.len() < ETHERNET_CRC_SIZE {
-        Err(ParseError::MissingBytes)
-    } else {
-        // TODO: check the the CRC bytes are all set to 0
-        data_and_crc.resize(data_and_crc.len() - ETHERNET_CRC_SIZE, 0);
-        Ok(EthernetFrame {
-            source,
-            destin,
-            protocol: protocol
-                .try_into()
-                .map_err(|_| ParseError::InvalidFieldValue {
-                    field: "ethernet_protocol",
-                    value: protocol as usize,
-                })?,
-            data: data_and_crc.into(),
-        })
     }
 }
 
@@ -224,7 +235,7 @@ mod test {
         };
 
         let bytes = original.to_bytes();
-        let frame = super::parse_ethernet_frame(bytes.as_ref());
+        let frame = EthernetFrame::from_raw_bytes(bytes.as_ref());
 
         assert!(frame.is_ok());
         assert_eq!(original, frame.unwrap());
@@ -240,7 +251,7 @@ mod test {
 
         assert_eq!(
             Err(ParseError::MissingBytes),
-            super::parse_ethernet_frame(buffer.as_ref())
+            EthernetFrame::from_raw_bytes(buffer.as_ref())
         );
     }
 
@@ -249,7 +260,7 @@ mod test {
         let mut buffer = Vec::new();
         assert_eq!(
             Err(ParseError::MissingBytes),
-            super::parse_ethernet_frame(buffer.as_ref())
+            EthernetFrame::from_raw_bytes(buffer.as_ref())
         );
     }
 
@@ -266,7 +277,7 @@ mod test {
                 field: "ethernet_protocol",
                 value: 0
             }),
-            super::parse_ethernet_frame(buffer.as_ref())
+            EthernetFrame::from_raw_bytes(buffer.as_ref())
         );
     }
 }
