@@ -17,7 +17,7 @@ pub struct Interface {
 pub struct Module {
     interfaces: Vec<Interface>,
     interface_nr: u32,
-    msg_buffer: Arc<(Mutex<VecDeque<WireMsg>>, Condvar)>, // TODO: add more things here c:
+    msg_queue: Arc<(Mutex<VecDeque<WireMsg>>, Condvar)>,
 }
 
 pub struct WireMsg {
@@ -68,7 +68,7 @@ impl Module {
                     connection: None,
                 })
                 .collect(),
-            msg_buffer: Arc::new((Mutex::new(VecDeque::new()), Condvar::new())),
+            msg_queue: Arc::new((Mutex::new(VecDeque::new()), Condvar::new())),
         }
     }
 
@@ -90,12 +90,14 @@ impl Module {
         let interface = &mut self.interfaces[interface_id as usize];
         match interface.connection {
             None => {
-                let msg_buffer = Arc::clone(&self.msg_buffer);
+                let msg_queue = Arc::clone(&self.msg_queue);
                 link_end.attach_receiver(move |data| {
-                    let (lock, condvar) = &*msg_buffer;
-                    let mut buffer = lock.lock().unwrap();
-                    buffer.push_back(WireMsg { interface_id, data });
-                    condvar.notify_one() // there should only be one thread waiting for this
+                    let (lock, condvar) = &*msg_queue;
+                    let mut queue = lock.lock().unwrap();
+                    queue.push_back(WireMsg { interface_id, data });
+                    if queue.len() == 1 {
+                        condvar.notify_one() // there should only be one thread waiting for this
+                    }
                 });
                 interface.connection = Some(link_end);
             }
@@ -111,13 +113,13 @@ impl Module {
     }
 
     pub fn wait_for_msg(&mut self) -> WireMsg {
-        let (lock, condvar) = &*self.msg_buffer;
+        let (lock, condvar) = &*self.msg_queue;
 
-        let mut buffer = condvar
-            .wait_while(lock.lock().unwrap(), |buffer| buffer.is_empty())
+        let mut queue = condvar
+            .wait_while(lock.lock().unwrap(), |queue| queue.is_empty())
             .unwrap();
 
-        buffer.pop_front().unwrap()
+        queue.pop_front().unwrap()
     }
 }
 

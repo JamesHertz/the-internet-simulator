@@ -88,8 +88,8 @@ impl Debug for EthernetFrame {
 impl EthernetFrame {
     pub fn to_bytes(&self) -> Box<[u8]> {
         let mut buffer: Vec<u8> = Vec::new();
-        super::write_bytes(&mut buffer, self.source.as_bytes());
         super::write_bytes(&mut buffer, self.destin.as_bytes());
+        super::write_bytes(&mut buffer, self.source.as_bytes());
         super::write_u16(&mut buffer, self.protocol as u16);
         super::write_bytes(&mut buffer, self.data.as_ref());
         super::write_bytes(&mut buffer, &[0; ETHERNET_CRC_SIZE]);
@@ -103,8 +103,8 @@ impl EthernetFrame {
     pub fn from_raw_bytes(data: &[u8]) -> Result<Self, ParseError> {
         let mut parser = Parser::build(data);
 
-        let source = MacAddress::new(parser.parse_chunk()?);
         let destin = MacAddress::new(parser.parse_chunk()?);
+        let source = MacAddress::new(parser.parse_chunk()?);
 
         let protocol = parser.parse_u16()?;
 
@@ -280,4 +280,22 @@ mod test {
             EthernetFrame::from_raw_bytes(buffer.as_ref())
         );
     }
+
+    // TODO: finish later
+    //#[test]
+    //fn correct_parsing() {
+    //    let mut buffer = Vec::new();
+    //    protocols::write_bytes(&mut buffer, &[10; ETHERNET_MAC_ADDR_SIZE]);
+    //    protocols::write_bytes(&mut buffer, &[11; ETHERNET_MAC_ADDR_SIZE]);
+    //    protocols::write_u16(&mut buffer, 0);
+    //    protocols::write_bytes(&mut buffer, &[0; 10]);
+    //
+    //    assert_eq!(
+    //        Err(ParseError::InvalidFieldValue {
+    //            field: "ethernet_protocol",
+    //            value: 0
+    //        }),
+    //        EthernetFrame::from_raw_bytes(buffer.as_ref())
+    //    );
+    //}
 }
